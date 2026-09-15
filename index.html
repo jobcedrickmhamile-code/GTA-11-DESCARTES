@@ -63,7 +63,7 @@
       <div class="panel-header">
         <div class="panel-title">
           <span class="logo-text">GTA-11</span>
-          <span class="badge">EQUATIONS</span>
+          <span class="badge">LAYERS</span>
         </div>
         <button id="toggle-panel-btn" class="icon-btn" title="Toggle Equations Drawer">
           <i class="fa-solid fa-chevron-left" id="toggle-icon"></i>
@@ -72,7 +72,15 @@
 
       <!-- Panel Body -->
       <div class="panel-body">
-        
+
+        <!-- Quick Tools Bar Row 0 (Undo) -->
+        <div class="tools-bar">
+          <button id="undo-btn" class="tool-btn" title="Undo Last Action" disabled>
+            <i class="fa-solid fa-rotate-left"></i>
+            <span>Undo</span>
+          </button>
+        </div>
+
         <!-- Quick Tools Bar Row 1 -->
         <div class="tools-bar">
           <label for="bg-upload" class="tool-btn" title="Upload Reference Image">
@@ -109,13 +117,17 @@
           <button id="remove-bg-btn" class="link-btn"><i class="fa-solid fa-xmark"></i> Remove Reference</button>
         </div>
 
-        <!-- Scrollable List of Generated Equations -->
-        <div class="equations-scroll-area" id="equations-list">
-          <div class="empty-state">
-            <i class="fa-solid fa-pen-line"></i>
-            <p>Draw any curve or line on the Cartesian plane to generate its function.</p>
-          </div>
+        <!-- Layers Toolbar -->
+        <div class="layers-toolbar">
+          <span class="layers-toolbar-label">Layers</span>
+          <button id="add-layer-btn" class="icon-btn" title="Add New Layer">
+            <i class="fa-solid fa-plus"></i>
+          </button>
         </div>
+
+        <!-- Scrollable List of Layers, each with its curves grouped underneath -->
+        <div class="equations-scroll-area" id="equations-list"></div>
+
 
         <!-- Creator Credit inside Workspace Drawer -->
         <div class="panel-footer-credit">
