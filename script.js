@@ -31,7 +31,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const zoomOutBtn = document.getElementById("zoom-out");
   const resetViewBtn = document.getElementById("reset-view");
 
-  // Highlight Palette when Hovered/Selected
+  // Palette when Hovered/Selected
   const highlightColors = [
     "#187a3d", "#2563eb", "#d97706", "#9333ea", "#dc2626", "#0891b2"
   ];
@@ -46,7 +46,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let isDrawing = false;
   let currentStroke = [];
   let curves = [];
-  let activeCurveId = null; // Currently highlighted curve ID
+  let activeCurveId = null; 
   let bgImage = null;
   let bgImageOpacity = 0.4;
 
@@ -62,7 +62,6 @@ document.addEventListener("DOMContentLoaded", () => {
     landingPage.classList.remove("hidden");
   });
 
-  // Fixed Panel Collapse Toggle
   togglePanelBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     floatingPanel.classList.toggle("collapsed");
@@ -95,7 +94,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Fill canvas background white so exported PNG isn't transparent
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -109,10 +107,10 @@ document.addEventListener("DOMContentLoaded", () => {
       ctx.restore();
     }
 
-    // 2. Render Light Cartesian Grid (Desmos Style)
+    // 2. Render Cartesian Grid
     drawGrid();
 
-    // 3. Render Curves (Solid Black by default, Colored on Hover/Selection)
+    // 3. Render Curves from Equations
     curves.forEach(curve => drawCurve(curve));
 
     // 4. Render Active Freehand Drawing Stroke
@@ -140,7 +138,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (scale < 25) gridStep = 5;
     if (scale > 90) gridStep = 0.5;
 
-    // Light Grid Lines
     ctx.strokeStyle = "#e2e8f0";
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -159,21 +156,18 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     ctx.stroke();
 
-    // Dark Main Axes (X and Y)
+    // Axes
     ctx.strokeStyle = "#0f172a";
     ctx.lineWidth = 1.8;
     ctx.beginPath();
 
-    // Y Axis
     ctx.moveTo(originX, 0);
     ctx.lineTo(originX, canvas.height);
-
-    // X Axis
     ctx.moveTo(0, originY);
     ctx.lineTo(canvas.width, originY);
     ctx.stroke();
 
-    // Number Labels
+    // Numbers
     ctx.fillStyle = "#64748b";
     ctx.font = "11px 'Fira Code', monospace";
 
@@ -193,19 +187,24 @@ document.addEventListener("DOMContentLoaded", () => {
   function drawCurve(curve) {
     const isHighlighted = (curve.id === activeCurveId);
     
-    // Default is SOLID BLACK, highlighted gets its highlight color + thicker stroke
     ctx.strokeStyle = isHighlighted ? curve.highlightColor : "#000000";
     ctx.lineWidth = isHighlighted ? 4 : 2.5;
 
     ctx.beginPath();
 
-    if (curve.type === "line" || curve.type === "parabola") {
-      const startX = Math.min(curve.domain.min, curve.domain.max);
-      const endX = Math.max(curve.domain.min, curve.domain.max);
+    if (curve.type === "vertical_line") {
+      const p1 = mathToScreen(curve.xVal, curve.domain.min);
+      const p2 = mathToScreen(curve.xVal, curve.domain.max);
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+    } 
+    else if (curve.type === "line" || curve.type === "parabola") {
+      const startX = curve.domain.min;
+      const endX = curve.domain.max;
       const step = (endX - startX) / 100 || 0.01;
 
       let started = false;
-      for (let x = startX; x <= endX; x += step) {
+      for (let x = startX; x <= endX + (step/2); x += step) {
         let y = (curve.type === "line") 
           ? (curve.m * x + curve.b) 
           : (curve.a * x * x + curve.b * x + curve.c);
@@ -220,9 +219,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } else if (curve.type === "parametric") {
       let started = false;
-      for (let t = 0; t <= 1; t += 0.01) {
-        const x = Math.pow(1 - t, 2) * curve.p0.x + 2 * (1 - t) * t * curve.p1.x + Math.pow(t, 2) * curve.p2.x;
-        const y = Math.pow(1 - t, 2) * curve.p0.y + 2 * (1 - t) * t * curve.p1.y + Math.pow(t, 2) * curve.p2.y;
+      for (let t = 0; t <= 1.001; t += 0.01) {
+        const x = curve.ax * t * t + curve.bx * t + curve.cx;
+        const y = curve.ay * t * t + curve.by * t + curve.cy;
         const pt = mathToScreen(x, y);
 
         if (!started) {
@@ -266,7 +265,7 @@ document.addEventListener("DOMContentLoaded", () => {
     currentStroke.push({ px, py, x: mathPt.x, y: mathPt.y });
   }
 
-  // --- MATHEMATICAL RECOGNITION ALGORITHMS ---
+  // --- ACCURATE MATHEMATICAL FITTING ALGORITHMS ---
   function processStroke(pts) {
     if (pts.length < 3) return;
 
@@ -274,12 +273,30 @@ document.addEventListener("DOMContentLoaded", () => {
     colorIndex++;
 
     const xCoords = pts.map(p => p.x);
+    const yCoords = pts.map(p => p.y);
     const minX = Math.min(...xCoords);
     const maxX = Math.max(...xCoords);
+    const minY = Math.min(...yCoords);
+    const maxY = Math.max(...yCoords);
 
-    // 1. Linear Fit
+    // 1. Vertical Line Detection
+    if (Math.abs(maxX - minX) < 0.15) {
+      const avgX = (minX + maxX) / 2;
+      curves.push({
+        id: Date.now(),
+        type: "vertical_line",
+        highlightColor: chosenHighlightColor,
+        xVal: avgX,
+        domain: { min: minY, max: maxY },
+        equationText: `x = ${avgX.toFixed(2)}  {${minY.toFixed(1)} ≤ y ≤ ${maxY.toFixed(1)}}`
+      });
+      updateEquationsUI();
+      return;
+    }
+
+    // 2. Linear Regression (y = mx + b)
     const lineFit = fitLine(pts);
-    if (lineFit.rSquared > 0.90) {
+    if (lineFit.rSquared > 0.94) {
       curves.push({
         id: Date.now(),
         type: "line",
@@ -287,15 +304,15 @@ document.addEventListener("DOMContentLoaded", () => {
         m: lineFit.m,
         b: lineFit.b,
         domain: { min: minX, max: maxX },
-        equationText: `y = ${lineFit.m.toFixed(2)}x ${lineFit.b >= 0 ? '+' : '-'} ${Math.abs(lineFit.b).toFixed(2)}`
+        equationText: `y = ${lineFit.m.toFixed(2)}x ${lineFit.b >= 0 ? '+' : '-'} ${Math.abs(lineFit.b).toFixed(2)}  {${minX.toFixed(1)} ≤ x ≤ ${maxX.toFixed(1)}}`
       });
       updateEquationsUI();
       return;
     }
 
-    // 2. Parabolic Fit
+    // 3. Parabolic Quadratic Least-Squares Fit (y = ax² + bx + c)
     const quadFit = fitParabola(pts);
-    if (quadFit.rSquared > 0.85) {
+    if (quadFit && quadFit.rSquared > 0.88) {
       const signB = quadFit.b >= 0 ? '+' : '-';
       const signC = quadFit.c >= 0 ? '+' : '-';
       curves.push({
@@ -306,27 +323,21 @@ document.addEventListener("DOMContentLoaded", () => {
         b: quadFit.b,
         c: quadFit.c,
         domain: { min: minX, max: maxX },
-        equationText: `y = ${quadFit.a.toFixed(2)}x² ${signB} ${Math.abs(quadFit.b).toFixed(2)}x ${signC} ${Math.abs(quadFit.c).toFixed(2)}`
+        equationText: `y = ${quadFit.a.toFixed(2)}x² ${signB} ${Math.abs(quadFit.b).toFixed(2)}x ${signC} ${Math.abs(quadFit.c).toFixed(2)}  {${minX.toFixed(1)} ≤ x ≤ ${maxX.toFixed(1)}}`
       });
       updateEquationsUI();
       return;
     }
 
-    // 3. Parametric Spline Fallback
-    const p0 = pts[0];
-    const p2 = pts[pts.length - 1];
-    const midIdx = Math.floor(pts.length / 2);
-    const p1 = {
-      x: 2 * pts[midIdx].x - 0.5 * p0.x - 0.5 * p2.x,
-      y: 2 * pts[midIdx].y - 0.5 * p0.y - 0.5 * p2.y
-    };
-
+    // 4. Parametric Quadratic Fitting (x(t), y(t) for freehand curves, vertical loops, etc.)
+    const paramFit = fitParametric(pts);
     curves.push({
       id: Date.now(),
       type: "parametric",
       highlightColor: chosenHighlightColor,
-      p0, p1, p2,
-      equationText: `f(t) = bezier(${p0.x.toFixed(1)}, ${p1.x.toFixed(1)}, ${p2.x.toFixed(1)})`
+      ax: paramFit.ax, bx: paramFit.bx, cx: paramFit.cx,
+      ay: paramFit.ay, by: paramFit.by, cy: paramFit.cy,
+      equationText: `( ${paramFit.ax.toFixed(2)}t²${paramFit.bx>=0?'+':''}${paramFit.bx.toFixed(2)}t${paramFit.cx>=0?'+':''}${paramFit.cx.toFixed(2)} , ${paramFit.ay.toFixed(2)}t²${paramFit.by>=0?'+':''}${paramFit.by.toFixed(2)}t${paramFit.cy>=0?'+':''}${paramFit.cy.toFixed(2)} )`
     });
     updateEquationsUI();
   }
@@ -338,7 +349,10 @@ document.addEventListener("DOMContentLoaded", () => {
       sumX += p.x; sumY += p.y;
       sumXY += p.x * p.y; sumXX += p.x * p.x;
     }
-    const m = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+    const denom = (n * sumXX - sumX * sumX);
+    if (Math.abs(denom) < 1e-5) return { m: 0, b: 0, rSquared: 0 };
+
+    const m = (n * sumXY - sumX * sumY) / denom;
     const b = (sumY - m * sumX) / n;
 
     let ssTot = 0, ssRes = 0;
@@ -361,14 +375,30 @@ document.addEventListener("DOMContentLoaded", () => {
       sXY += x * y; sX2Y += x2 * y;
     }
 
-    const D = n * (sX2 * sX4 - sX3 * sX3) - sX * (sX * sX4 - sX2 * sX3) + sX2 * (sX * sX3 - sX2 * sX2);
-    const Da = sY * (sX2 * sX4 - sX3 * sX3) - sX * (sXY * sX4 - sX2Y * sX3) + sX2 * (sXY * sX3 - sX2Y * sX2);
-    const Db = n * (sXY * sX4 - sX2Y * sX3) - sY * (sX * sX4 - sX2 * sX3) + sX2 * (sX * sX2Y - sXY * sX2);
-    const Dc = n * (sX2 * sX2Y - sX3 * sXY) - sX * (sX * sX2Y - sX3 * sY) + sY * (sX * sX3 - sX2 * sX2);
+    // Solve 3x3 System using Matrix Determinants
+    const M = [
+      [sX4, sX3, sX2],
+      [sX3, sX2, sX],
+      [sX2, sX,  n]
+    ];
+    const V = [sX2Y, sXY, sY];
 
-    const a = Da / D || 0;
-    const b = Db / D || 0;
-    const c = Dc / D || 0;
+    function det3(m) {
+      return m[0][0]*(m[1][1]*m[2][2] - m[1][2]*m[2][1])
+           - m[0][1]*(m[1][0]*m[2][2] - m[1][2]*m[2][0])
+           + m[0][2]*(m[1][0]*m[2][1] - m[1][1]*m[2][0]);
+    }
+
+    const D = det3(M);
+    if (Math.abs(D) < 1e-5) return null;
+
+    const Da = det3([[V[0], M[0][1], M[0][2]], [V[1], M[1][1], M[1][2]], [V[2], M[2][1], M[2][2]]]);
+    const Db = det3([[M[0][0], V[0], M[0][2]], [M[1][0], V[1], M[1][2]], [M[2][0], V[2], M[2][2]]]);
+    const Dc = det3([[M[0][0], M[0][1], V[0]], [M[1][0], M[1][1], V[1]], [M[2][0], M[2][1], V[2]]]);
+
+    const a = Da / D;
+    const b = Db / D;
+    const c = Dc / D;
 
     let ssTot = 0, ssRes = 0;
     const meanY = sY / n;
@@ -378,6 +408,49 @@ document.addEventListener("DOMContentLoaded", () => {
       ssRes += Math.pow(p.y - predY, 2);
     }
     return { a, b, c, rSquared: 1 - (ssRes / (ssTot || 1)) };
+  }
+
+  function fitParametric(pts) {
+    const n = pts.length;
+    let sT = 0, sX = 0, sY = 0, sT2 = 0, sT3 = 0, sT4 = 0, sTX = 0, sT2X = 0, sTY = 0, sT2Y = 0;
+
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      const x = pts[i].x;
+      const y = pts[i].y;
+      const t2 = t * t;
+
+      sT += t; sT2 += t2; sT3 += t2 * t; sT4 += t2 * t2;
+      sX += x; sTX += t * x; sT2X += t2 * x;
+      sY += y; sTY += t * y; sT2Y += t2 * y;
+    }
+
+    function solveQuadSystem(vX) {
+      const M = [
+        [sT4, sT3, sT2],
+        [sT3, sT2, sT],
+        [sT2, sT,  n]
+      ];
+      function det3(m) {
+        return m[0][0]*(m[1][1]*m[2][2] - m[1][2]*m[2][1])
+             - m[0][1]*(m[1][0]*m[2][2] - m[1][2]*m[2][0])
+             + m[0][2]*(m[1][0]*m[2][1] - m[1][1]*m[2][0]);
+      }
+      const D = det3(M);
+      const Da = det3([[vX[0], M[0][1], M[0][2]], [vX[1], M[1][1], M[1][2]], [vX[2], M[2][1], M[2][2]]]);
+      const Db = det3([[M[0][0], vX[0], M[0][2]], [M[1][0], vX[1], M[1][2]], [M[2][0], vX[2], M[2][2]]]);
+      const Dc = det3([[M[0][0], M[0][1], vX[0]], [M[1][0], M[1][1], vX[1]], [M[2][0], M[2][1], vX[2]]]);
+
+      return { a: Da / D, b: Db / D, c: Dc / D };
+    }
+
+    const fitX = solveQuadSystem([sT2X, sTX, sX]);
+    const fitY = solveQuadSystem([sT2Y, sTY, sY]);
+
+    return {
+      ax: fitX.a, bx: fitX.b, cx: fitX.c,
+      ay: fitY.a, by: fitY.b, cy: fitY.c
+    };
   }
 
   // --- UI DRAWER UPDATES & HOVER HIGHLIGHTING ---
@@ -438,7 +511,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- EXPORT & COPY ALL LOGIC ---
   exportImgBtn.addEventListener("click", () => {
-    // Ensure canvas renders without active hover highlighting
     activeCurveId = null;
     render();
 
